@@ -27,6 +27,7 @@ import {
   getPairedSerialPort,
   requestSerialPort,
   testSerialPrinter,
+  forgetAllSerialPorts,
 } from '../services/print/serialPrintService';
 import {
   checkWebUsbStatus,
@@ -102,6 +103,16 @@ export default function PrinterSettingModal({ isOpen, onClose, onTestBrowser }: 
     saveStoredBaudRate(config.baudRate);
     setSaveToast(true);
     setTimeout(() => setSaveToast(false), 2500);
+  };
+
+  const handleResetSerialPorts = async () => {
+    await forgetAllSerialPorts();
+    setPairedPortInfo(null);
+    setTestingStatus({
+      loading: false,
+      success: true,
+      message: 'Đã xóa toàn bộ cổng COM đã ghép nối cũ. Bạn có thể bấm "Chọn / Đổi Cổng COM" để chọn lại đúng cổng.',
+    });
   };
 
   const handleSelectSerialPort = async () => {
@@ -293,26 +304,57 @@ export default function PrinterSettingModal({ isOpen, onClose, onTestBrowser }: 
 
               {/* Thông tin ghép nối */}
               <div style={sectionBoxStyle}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                   <div>
                     <label style={labelStyle}>Thiết bị Cổng COM đã chọn:</label>
                     <div style={{ fontSize: '13px', color: pairedPortInfo ? '#38bdf8' : '#94a3b8', fontWeight: 600 }}>
                       {pairedPortInfo || 'Chưa chọn cổng COM (Nhấn nút bên cạnh để chọn)'}
                     </div>
                   </div>
-                  <button
-                    onClick={handleSelectSerialPort}
-                    disabled={!serialStatus.supported}
-                    style={primaryBtnStyle}
-                  >
-                    <RefreshCw size={14} />
-                    <span>Chọn / Ghép Nối COM</span>
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    {pairedPortInfo && (
+                      <button
+                        onClick={handleResetSerialPorts}
+                        style={{ ...secondaryBtnStyle, padding: '7px 12px', fontSize: '11px', color: '#f87171' }}
+                        title="Xóa ghép nối cổng COM hiện tại để chọn lại từ đầu"
+                      >
+                        <Trash2 size={13} />
+                        <span>Xóa Ghép Nối Cũ</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={handleSelectSerialPort}
+                      disabled={!serialStatus.supported}
+                      style={primaryBtnStyle}
+                    >
+                      <RefreshCw size={14} />
+                      <span>{pairedPortInfo ? 'Đổi / Chọn Lại COM' : 'Chọn / Ghép Nối COM'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Hộp hướng dẫn khắc phục lỗi Failed to open serial port */}
+              <div style={{ ...alertNoticeStyle, borderLeft: '4px solid #f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.08)' }}>
+                <AlertTriangle size={18} color="#f59e0b" style={{ flexShrink: 0, marginTop: '2px' }} />
+                <div style={{ fontSize: '12px', color: '#fde68a', lineHeight: '1.5' }}>
+                  <strong style={{ color: '#fbbf24' }}>Gặp lỗi &quot;Failed to open serial port&quot;?</strong>
+                  <ul style={{ margin: '4px 0 0', paddingLeft: '18px' }}>
+                    <li>
+                      <strong>1. Bạn đang chọn nhầm cổng COM:</strong> Hầu hết máy tính có cổng <code>COM1</code> mặc định trên bo mạch chủ. Nếu bạn chọn <code>COM1</code>, Windows sẽ từ chối mở. Hãy bấm nút <strong>&quot;Đổi / Chọn Lại COM&quot;</strong> ở trên và chọn cổng USB-to-Serial của máy in (thường là <code>COM3</code>, <code>COM4</code>, <code>COM5</code>...).
+                    </li>
+                    <li>
+                      <strong>2. Driver Windows đang giữ cổng:</strong> Nếu bạn đã cài Driver hãng (như Xprinter, POS-80), dịch vụ Windows Print Spooler sẽ chiếm độc quyền cổng này.
+                    </li>
+                    <li>
+                      <strong>3. Máy in cắm cáp USB thông thường:</strong> Nếu máy in cắm dây USB trực tiếp (không phải cổng COM ảo), hãy chuyển sang tab <button type="button" onClick={() => setActiveTab('browser')} style={{ background: 'none', border: 'none', color: '#38bdf8', textDecoration: 'underline', cursor: 'pointer', fontWeight: 700, padding: 0 }}>Trình duyệt (Kiosk)</button> hoặc <button type="button" onClick={() => setActiveTab('usb')} style={{ background: 'none', border: 'none', color: '#38bdf8', textDecoration: 'underline', cursor: 'pointer', fontWeight: 700, padding: 0 }}>Cáp USB (WebUSB)</button> để in trực tiếp không cần cổng COM!
+                    </li>
+                  </ul>
                 </div>
               </div>
 
               {/* Tùy chỉnh Baud Rate */}
-              <div style={sectionBoxStyle}>
+              <div style={{ ...sectionBoxStyle, marginTop: '14px' }}>
                 <label style={labelStyle}>Tốc độ truyền (Baud Rate):</label>
                 <div style={{ display: 'flex', gap: '8px', marginTop: '6px', flexWrap: 'wrap' }}>
                   {[9600, 19200, 38400, 115200].map((rate) => (
@@ -341,7 +383,7 @@ export default function PrinterSettingModal({ isOpen, onClose, onTestBrowser }: 
               </div>
 
               {/* In Thử Nghiệm COM */}
-              <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '16px', flexWrap: 'wrap' }}>
                 <button
                   onClick={handleTestSerial}
                   disabled={testingStatus?.loading || !serialStatus.supported}

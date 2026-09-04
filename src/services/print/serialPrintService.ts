@@ -89,6 +89,31 @@ export async function requestSerialPort(): Promise<any> {
 }
 
 /**
+ * Quên / Xóa quyền tất cả cổng COM đã lưu trong trình duyệt để chọn lại từ đầu
+ */
+export async function forgetAllSerialPorts(): Promise<void> {
+  if (!isWebSerialSupported()) return;
+  try {
+    const ports = await (navigator as any).serial.getPorts();
+    for (const port of ports) {
+      // Đóng port nếu đang mở
+      try {
+        if (port.readable || port.writable) {
+          await port.close();
+        }
+      } catch {
+        // Bỏ qua
+      }
+      if (typeof port.forget === 'function') {
+        await port.forget();
+      }
+    }
+  } catch (err) {
+    console.error('Lỗi khi xóa cổng COM đã ghép nối:', err);
+  }
+}
+
+/**
  * Mở cổng COM, gửi buffer theo chunk 512 bytes và đóng cổng giải phóng khóa
  */
 export async function sendEscPosToSerialPort(
@@ -98,20 +123,34 @@ export async function sendEscPosToSerialPort(
 ): Promise<void> {
   const baudRate = customBaudRate || getStoredBaudRate();
 
-  try {
-    // Mở kết nối serial
-    await port.open({
-      baudRate,
-      dataBits: 8,
-      stopBits: 1,
-      parity: 'none',
-      flowControl: 'none',
-    });
-  } catch (err: any) {
-    // Nếu cổng đang mở dở dang từ phiên trước
-    if (!err.message?.includes('already open')) {
-      throw new Error(`Không thể mở cổng COM (${baudRate} baud): ${err.message || err}`);
+  // Kiểm tra xem cổng đã được mở từ phiên trước hay chưa
+  const isOpen = Boolean(port.readable || port.writable);
+
+  if (!isOpen) {
+    try {
+      // Mở kết nối serial với baudRate
+      await port.open({
+        baudRate,
+        dataBits: 8,
+        stopBits: 1,
+        parity: 'none',
+        flowControl: 'none',
+      });
+    } catch (err: any) {
+      const msg = err.message || '';
+      if (!msg.includes('already open')) {
+        let diagnostic = '';
+        if (msg.includes('Failed to open serial port') || err.name === 'NetworkError') {
+          diagnostic =
+            ' -> NGUYÊN NHÂN: Cổng COM này đang bị Driver máy in Windows (Print Spooler) hoặc ứng dụng khác chiếm giữ độc quyền, HOẶC bạn đã chọn nhầm cổng COM bo mạch (như COM1). Hãy bấm nút "Chọn lại Cổng COM" hoặc chuyển sang tab "Cáp USB" / "Trình duyệt".';
+        }
+        throw new Error(`Không thể mở cổng COM (${baudRate} baud): ${msg}${diagnostic}`);
+      }
     }
+  }
+
+  if (!port.writable) {
+    throw new Error('Cổng COM không có luồng ghi (writable stream)');
   }
 
   const writer = port.writable.getWriter();
@@ -123,7 +162,7 @@ export async function sendEscPosToSerialPort(
       const chunk = dataBuffer.slice(offset, offset + CHUNK_SIZE);
       await writer.write(chunk);
       // Giảm tải áp lực truyền nhận
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 15));
     }
   } finally {
     try {
@@ -229,9 +268,14 @@ export async function testSerialPrinter(): Promise<PrintResult> {
       method: 'serial',
     };
   } catch (err: any) {
+    const rawMsg = err.message || 'Lỗi không xác định';
+    let suggestion = '';
+    if (rawMsg.includes('Failed to open serial port')) {
+      suggestion = ' 👉 Khắc phục: Bạn đang chọn nhầm cổng (như COM1 bo mạch), hoặc Driver Windows đang chiếm cổng. Hãy mở "Cài Đặt Máy In" -> bấm "Đổi / Chọn Lại COM" để chọn đúng cổng máy in (COM3, COM4...), hoặc chuyển sang tab "Trình duyệt (Kiosk)" / "Cáp USB".';
+    }
     return {
       success: false,
-      message: `In thử nghiệm Cổng COM thất bại: ${err.message || 'Lỗi không xác định'}`,
+      message: `In thử nghiệm Cổng COM thất bại: ${rawMsg}${suggestion}`,
       method: 'serial',
     };
   }
