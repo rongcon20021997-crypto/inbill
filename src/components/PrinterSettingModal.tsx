@@ -18,6 +18,7 @@ import {
   Check,
   X,
   ExternalLink,
+  Trash2,
 } from 'lucide-react';
 import { PrinterConfig, PrinterMethod } from '../types/printer';
 import {
